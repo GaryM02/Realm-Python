@@ -1,0 +1,23 @@
+1. Class and property info for tests
+
+1. realm_schema_new
+2.  realm_config_new
+3.  realm_config_set_schema
+4.  realm_config_set_schema_mode
+5.  realm_config_set_schema_version
+6.  realm_config_set_path
+7.  realm_open
+8.  realm_release(config);
+    realm_release(schema);
+9. assert(!realm_is_frozen(realm));
+    assert(!realm_is_closed(realm));
+    assert(!realm_is_writable(realm));
+10. realm_begin_write(realm);
+        CHECK_ERROR();
+        assert(realm_is_writable(realm));
+        realm_rollback(realm);
+        CHECK_ERROR();
+11. realm_get_num_classes
+12. realm_get_class_keys(realm, class_keys, 2, &n);
+13.   realm_find_class
+14.  realm_get_class_properties
