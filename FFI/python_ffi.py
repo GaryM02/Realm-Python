@@ -221,10 +221,8 @@ class Realm():
 #  * function always returns false.
 #  */
 # RLM_API bool realm_is_frozen(const void*);
-def realm_is_frozen(realm):
-    realm = realm.handle
-    realm_ffi.realm_is_frozen.restype = c_bool
-    assert realm_ffi.realm_is_frozen(realm)
+def realm_is_frozen(handle):
+    pass
 
 
 #check if realm is closed
@@ -252,5 +250,4 @@ def realm_is_writable():
 config = Configuration(Schema())
 realm = Realm(config)
 realm.open_realm()
-realm_is_frozen(realm)
 check_error()
