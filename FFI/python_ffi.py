@@ -1,7 +1,7 @@
 from ctypes import *
 import faulthandler
 # Load the shared library into ctypes
-libname = "./librealm-ffi-dbg.dylib"
+libname = "./FFI/librealm-ffi-dbg.dylib"
 realm_ffi = cdll.LoadLibrary(libname)
 
 #/classes and properties for testing
@@ -224,7 +224,7 @@ class Realm():
 def realm_is_frozen(realm):
     realm = realm.handle
     realm_ffi.realm_is_frozen.restype = c_bool
-    realm_ffi.realm_is_frozen(realm)
+    assert realm_ffi.realm_is_frozen(realm)
 
 
 #check if realm is closed
@@ -254,4 +254,3 @@ realm = Realm(config)
 realm.open_realm()
 realm_is_frozen(realm)
 check_error()
-faulthandler.enable()
