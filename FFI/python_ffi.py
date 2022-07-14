@@ -158,17 +158,17 @@ class Realm():
     def __init__(self, configuration):
         self.configuration = configuration
 
-    #open the realm
-    # /**
-    #  * Open a Realm file.
-    #  *
-    #  * @param config Realm configuration. If the Realm is already opened on another
-    #  *               thread, validate that the given configuration is compatible
-    #  *               with the existing one.
-    #  * @return If successful, the Realm object. Otherwise, NULL.
-    #  */
-    # RLM_API realm_t* realm_open(const realm_config_t* config);
-    def open_realm(self):
+        #open the realm
+        # /**
+        #  * Open a Realm file.
+        #  *
+        #  * @param config Realm configuration. If the Realm is already opened on another
+        #  *               thread, validate that the given configuration is compatible
+        #  *               with the existing one.
+        #  * @return If successful, the Realm object. Otherwise, NULL.
+        #  */
+        # RLM_API realm_t* realm_open(const realm_config_t* config);
+
         realm_ffi.realm_open.restype = c_void_p
         self.handle = realm_ffi.realm_open(c_void_p(self.configuration.handle))
         print(self.handle)
@@ -199,8 +199,10 @@ class Realm():
     # * @return True if no exception occurred.
     # */
     # RLM_API bool realm_begin_write(realm_t*);
-    def begin_write():
-        pass
+    def begin_write(self):
+        Realm.begin_read(self.handle)
+        assert realm_ffi.realm_begin_write(c_void_p(self.handle))
+        print("begin")
 
     #begin a read transaction
     # /**
@@ -209,31 +211,32 @@ class Realm():
     # * @return True if no exception occurred.
     # */
     # RLM_API bool realm_begin_read(realm_t*);
-    def begin_read():
-        pass
+    def begin_read(handle):
+        realm_ffi.realm_begin_read.restype = c_bool
+        assert realm_ffi.realm_begin_read(c_void_p(handle))
 
+    #check if realm is closed
+    # /**
+    # * True if the Realm file is closed.
+    # *
+    # * This function cannot fail.
+    # */
+    # RLM_API bool realm_is_closed(realm_t*);
+    def realm_is_closed(self):
+        realm_ffi.realm_is_closed.restype = c_bool
+        closed = realm_ffi.realm_is_closed(c_void_p(self.handle))
+        if closed == False:
+            print("The realm is not closed.")
+        else:
+            print("The realm is closed.")
 
-#check if frozen
-#     /**
-#  * True if a Realm C Wrapper object is "frozen" (immutable).
-#  *
-#  * Objects, collections, and results can be frozen. For all other types, this
-#  * function always returns false.
-#  */
-# RLM_API bool realm_is_frozen(const void*);
-def realm_is_frozen(handle):
-    pass
-
-
-#check if realm is closed
-# /**
-# * True if the Realm file is closed.
-# *
-# * This function cannot fail.
-# */
-# RLM_API bool realm_is_closed(realm_t*);
-def realm_is_closed():
-    pass
+    def realm_is_frozen(self):
+        realm_ffi.realm_is_frozen.restype = c_bool
+        frozen = realm_ffi.realm_is_frozen(c_void_p(self.handle))
+        if frozen == False:
+            print("The realm is not frozen.")
+        else:
+            print("The realm is frozen.")
 
 
 #check if realm is writeable
@@ -249,5 +252,7 @@ def realm_is_writable():
 
 config = Configuration(Schema())
 realm = Realm(config)
-realm.open_realm()
+realm.begin_write()
+realm.realm_is_closed()
+realm.realm_is_frozen()
 check_error()
