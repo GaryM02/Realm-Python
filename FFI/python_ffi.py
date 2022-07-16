@@ -69,6 +69,33 @@ def check_error():
     print(err.message)
 
 
+class Get_class_keys(Structure):
+    _fields_ = [('out_keys', c_void_p), ('out_n', c_void_p)]
+
+
+def array_buffer_int32_bit(struct, field):
+    ArrayType = c_int32 * 2000
+    in_data = struct
+    data_buffer = ArrayType()
+    in_data.field = c_void_p(
+        addressof(data_buffer))  # or cast(data_buffer, c_void_p)
+
+
+class Realm_Find_Class(Structure):
+    _fields_ = [('out_found', c_bool), ('out_class_info', c_void_p)]
+
+    def get_found():
+        return _fields_[0]
+
+
+def array_buffer_string(struct, field):
+    ArrayType = c_char * 2000
+    in_data = struct
+    data_buffer = ArrayType()
+    in_data.field = c_void_p(
+        addressof(data_buffer))  # or cast(data_buffer, c_void_p)
+
+
 #define schema
 # /**
 #  * Create a new schema from classes and their properties.
@@ -301,23 +328,36 @@ class Realm():
         # >>> a
         # array([1, 2, 3, ..., 0, 0, 0], dtype=int16)
         #we need a structure to hold our out keys and out n buffer
-        out_keys = array_buffer_32_bit(Get_class_keys, out_keys)
-        out_n = array_buffer_32_bit(Get_class_keys, out_n)
+        out_keys = array_buffer_int32_bit(Get_class_keys, out_keys)
+        out_n = array_buffer_int32_bit(Get_class_keys, out_n)
         answer = realm_ffi.realm_get_class_keys(c_void_p(self.handle),
                                                 out_keys, 10, out_n)
         print(answer)
 
+        #         /**
+        #  * Find a by the name of @a name.
+        #  *
+        #  * @param name The name of the class.
+        #  * @param out_found Set to true if the class was found and no error occurred.
+        #  *                  Otherwise, false. May not be NULL.
+        #  * @param out_class_info A pointer to a `realm_class_info_t` that will be
+        #  *                       populated with information about the class. May be
+        #  *                       NULL.
+        #  * @return True if no exception occurred.
+        #  */
+        # RLM_API bool realm_find_class(const realm_t*, const char* name, bool* out_found, realm_class_info_t* out_class_info);
 
-def Get_class_keys(structure):
-    _fields_ = [('out_keys', c_void_p), ('out_n', c_void_p)]
+    def realm_find_class(self):
+        info = Class_Info()
+        name = info.name
+        out_info = []
+        found = bool()
+        out = array_buffer_string(Realm_Find_Class, out_info)
 
-
-def array_buffer_32_bit(struct, field):
-    ArrayType = c_int32 * 2000
-    in_data = struct
-    data_buffer = ArrayType()
-    in_data.field = c_void_p(
-        addressof(data_buffer))  # or cast(data_buffer, c_void_p)
+        realm_ffi.realm_find_class.restype = c_bool
+        answer = realm_ffi.realm_find_class(c_void_p(self.handle), name, found,
+                                            out)
+        print(answer)
 
 
 config = Configuration(Schema())
@@ -333,4 +373,6 @@ check_error()
 realm.realm_get_num_classes()
 check_error()
 realm.realm_get_class_keys()
+check_error()
+realm.realm_find_class()  # create buffer for out_class_info and out_found
 check_error()
