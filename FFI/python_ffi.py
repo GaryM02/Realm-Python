@@ -1,5 +1,5 @@
 from ctypes import *
-import faulthandler
+import numpy
 # Load the shared library into ctypes
 libname = "./FFI/librealm-ffi-dbg.dylib"
 realm_ffi = cdll.LoadLibrary(libname)
@@ -202,6 +202,14 @@ class Realm():
     def begin_write(self):
         Realm.begin_read(self.handle)
         assert realm_ffi.realm_begin_write(c_void_p(self.handle))
+        #/**
+        #  * Roll back a write transaction.
+        #  *
+        #  * @return True if the rollback succeeded and no exceptions were thrown.
+        #  */
+        #RLM_API bool realm_rollback(realm_t*);
+        realm_ffi.realm_rollback.restype = c_bool
+        assert realm_ffi.realm_rollback(c_void_p(self.handle))
         print("begin")
 
     #begin a read transaction
@@ -213,7 +221,7 @@ class Realm():
     # RLM_API bool realm_begin_read(realm_t*);
     def begin_read(handle):
         realm_ffi.realm_begin_read.restype = c_bool
-        assert realm_ffi.realm_begin_read(c_void_p(handle))
+        realm_ffi.realm_begin_read(c_void_p(handle))
 
     #check if realm is closed
     # /**
@@ -238,21 +246,91 @@ class Realm():
         else:
             print("The realm is frozen.")
 
+    #check if realm is writeable
+    # /**
+    # * Return true if the realm is in a write transaction.
+    # *
+    # * This function cannot fail.
+    # */
+    # RLM_API bool realm_is_writable(const realm_t*);
+    def realm_is_writable(self):
+        realm_ffi.realm_is_writable.restype = c_bool
+        succeed = realm_ffi.realm_is_writable(c_void_p(self.handle))
+        if succeed == True:
+            print("Realm is writeable")
+        else:
+            print("Realm is not writeable")
 
-#check if realm is writeable
-# /**
-# * Return true if the realm is in a write transaction.
-# *
-# * This function cannot fail.
-# */
-# RLM_API bool realm_is_writable(const realm_t*);
-def realm_is_writable():
-    pass
+    #     /**
+    #  * Return the number of classes in the Realm's schema.
+    #  *
+    #  * This cannot fail.
+    #  */
+    # RLM_API size_t realm_get_num_classes(const realm_t*);
+    def realm_get_num_classes(self):
+        realm_ffi.realm_get_num_classes.restype = c_int
+        num_classes = realm_ffi.realm_get_num_classes(c_void_p(self.handle))
+        print(num_classes)
+
+    #     /**
+    #  * Get the table keys for classes in the schema.
+    #  * In case of errors this function will return false (errors to be fetched via `realm_get_last_error()`).
+    #  * If data is not copied the function will return true and set  `out_n` with the capacity needed.
+    #  * Data is only copied if the input array has enough capacity, otherwise the needed  array capacity will be set.
+    #  *
+    #  * @param out_keys An array that will contain the keys of each class in the
+    #  *                 schema. Array may be NULL, in this case no data will be copied and `out_n` set if not NULL.
+    #  * @param max The maximum number of keys to write to `out_keys`.
+    #  * @param out_n The actual number of classes. May be NULL.
+    #  * @return True if no exception occurred.
+    #  */
+    # RLM_API bool realm_get_class_keys(const realm_t*, realm_class_key_t* out_keys, size_t max, size_t* out_n);
+    def realm_get_class_keys(self):
+        realm_ffi.realm_get_class_keys.restype = c_bool
+        out_keys = []
+        out_n = 0
+        # create buffer to hold out_keys, use realm_get_num_classes to set size of buffer
+        # should be the same as how a string buffer works
+        # buffer = ctypes.create_string_buffer(b"",realm_get_num_classes() * 4)
+        #numpy
+        #To get numpy array from the pointer, see How to convert pointer to c array to python array:
+
+        # >>> import numpy
+        # >>> pa = cast(in_data.pDataBuffer, POINTER(ArrayType))
+        # >>> a = numpy.frombuffer(pa.contents, dtype=c_int16)
+        # >>> a
+        # array([1, 2, 3, ..., 0, 0, 0], dtype=int16)
+        #we need a structure to hold our out keys and out n buffer
+        out_keys = array_buffer_32_bit(Get_class_keys, out_keys)
+        out_n = array_buffer_32_bit(Get_class_keys, out_n)
+        answer = realm_ffi.realm_get_class_keys(c_void_p(self.handle),
+                                                out_keys, 10, out_n)
+        print(answer)
+
+
+def Get_class_keys(structure):
+    _fields_ = [('out_keys', c_void_p), ('out_n', c_void_p)]
+
+
+def array_buffer_32_bit(struct, field):
+    ArrayType = c_int32 * 2000
+    in_data = struct
+    data_buffer = ArrayType()
+    in_data.field = c_void_p(
+        addressof(data_buffer))  # or cast(data_buffer, c_void_p)
 
 
 config = Configuration(Schema())
 realm = Realm(config)
 realm.begin_write()
+check_error()
 realm.realm_is_closed()
+check_error()
 realm.realm_is_frozen()
+check_error()
+realm.realm_is_writable()
+check_error()
+realm.realm_get_num_classes()
+check_error()
+realm.realm_get_class_keys()
 check_error()
