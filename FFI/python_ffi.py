@@ -1,12 +1,13 @@
 from ctypes import *
-import numpy
+import faulthandler
+
 # Load the shared library into ctypes
 libname = "./FFI/librealm-ffi-dbg.dylib"
 realm_ffi = cdll.LoadLibrary(libname)
 
-#/classes and properties for testing
+# /classes and properties for testing
 
-#define class info
+# define class info
 # typedef struct realm_class_info {
 #     const char* name;
 #     const char* primary_key;
@@ -18,12 +19,17 @@ realm_ffi = cdll.LoadLibrary(libname)
 
 
 class Class_Info(Structure):
-    _fields_ = [("name", c_wchar_p), ("primary_key", c_wchar_p),
-                ("num_properties", c_int), ("num_computed_properties", c_int),
-                ("key", c_int)]
+    _fields_ = [
+        ("name", c_char_p),
+        ("primary_key", c_char_p),
+        ("num_properties", c_longlong),
+        ("num_computed_properties", c_longlong),
+        ("key", c_int),
+        ("flags", c_longlong),
+    ]
 
 
-#define property info
+# define property info
 # typedef struct realm_property_info {
 #     const char* name;
 #     const char* public_name;
@@ -35,17 +41,35 @@ class Class_Info(Structure):
 #     int flags;
 # } realm_property_info_t;
 class Property_Info(Structure):
-    _fields_ = [("name", c_wchar_p), ("public_name", c_wchar_p),
-                ("type", c_int), ("collection_type", c_int),
-                ("link_target", c_wchar_p),
-                ("link_origin_property_name", c_wchar_p),
-                ("realm_property_key_t", c_int), ("flags", c_int)]
+    _fields_ = [
+        ("name", c_char_p),
+        ("public_name", c_char_p),
+        ("type", c_int),
+        ("collection_type", c_int),
+        ("link_target", c_char_p),
+        ("link_origin_property_name", c_char_p),
+        ("key", c_int),
+        ("flags", c_longlong),
+    ]
 
 
-#/end of classes and properties
+# here we can pack our structs from our cdll into a buffer
+def buffer_pack_bytes(instance):
+    buffer = string_at(byref(instance), sizeof(instance))
+    return buffer
 
 
-#define error check for last error
+# we can cast our string with pointer to the string we want
+def buffer_unpack_bytes(ctype, buffer):
+    cstring = create_string_buffer(buffer)
+    instance = cast(pointer(cstring), POINTER(ctype)).contents
+    return instance
+
+
+# /end of classes and properties
+
+
+# define error check for last error
 # typedef struct realm_error {
 #     realm_errno_e error;
 #     const char* message;
@@ -58,8 +82,12 @@ class Property_Info(Structure):
 #     } kind;
 # } realm_error_t;
 class Error(Structure):
-    _fields_ = [("error", c_int), ("message", c_char_p),
-                ("usercode_error", c_char_p), ("kind", c_int)]
+    _fields_ = [
+        ("error", c_int),
+        ("message", c_char_p),
+        ("usercode_error", c_char_p),
+        ("kind", c_int),
+    ]
 
 
 def check_error():
@@ -70,19 +98,18 @@ def check_error():
 
 
 class Get_class_keys(Structure):
-    _fields_ = [('out_keys', c_void_p), ('out_n', c_void_p)]
+    _fields_ = [("out_keys", c_void_p), ("out_n", c_void_p)]
 
 
 def array_buffer_int32_bit(struct, field):
     ArrayType = c_int32 * 2000
     in_data = struct
     data_buffer = ArrayType()
-    in_data.field = c_void_p(
-        addressof(data_buffer))  # or cast(data_buffer, c_void_p)
+    in_data.field = c_void_p(addressof(data_buffer))  # or cast(data_buffer, c_void_p)
 
 
 class Realm_Find_Class(Structure):
-    _fields_ = [('out_found', c_bool), ('out_class_info', c_void_p)]
+    _fields_ = [("out_found", c_bool), ("out_class_info", c_void_p)]
 
     def get_found():
         return _fields_[0]
@@ -92,11 +119,17 @@ def array_buffer_string(struct, field):
     ArrayType = c_char * 2000
     in_data = struct
     data_buffer = ArrayType()
-    in_data.field = c_void_p(
-        addressof(data_buffer))  # or cast(data_buffer, c_void_p)
+    in_data.field = c_void_p(addressof(data_buffer))  # or cast(data_buffer, c_void_p)
 
 
-#define schema
+def array_buffer_schema(struct):
+    ArrayType = c_void_p * 2000
+    in_data = struct
+    data_buffer = ArrayType()
+    in_data = c_void_p(addressof(data_buffer))
+
+
+# define schema
 # /**
 #  * Create a new schema from classes and their properties.
 #  *
@@ -111,35 +144,99 @@ def array_buffer_string(struct, field):
 #  */
 # RLM_API realm_schema_t* realm_schema_new(const realm_class_info_t* classes, size_t num_classes,
 #                                          const realm_property_info_t** class_properties);
-class Schema():
+
+
+class Schema:
+    def wrap(self, a):  # this will break when using more than 1 class
+        x = len(a)
+        y = len(a[0])
+        arr = (
+            POINTER(Property_Info) * x
+        )()  # allocate array of pointers in X dimension
+        for i in range(x):
+            arr[i] = (Property_Info * y)(
+                *a[i]
+            )  # allocate array in Y dimension and populate it
+        return arr, x, y
+
     def __init__(self):
-        classes = (Class_Info * 1)
-        ii = classes(Class_Info("", "", 2, 0, 0))
-        class_properties = ((Property_Info * 2) * 1)
-        xx = class_properties(
-            (Property_Info("id", "id", 0,
-                           0), Property_Info("text", "text", 2, 0)))
+        sample_classes = [
+            Class_Info("TodoItem".encode("utf-8"), "".encode("utf-8"), 3, 0, 0, 0)
+        ]
+        sample_classes_ptr = (Class_Info * 1)(*sample_classes)  # only 1 class atm
+
         realm_ffi.realm_schema_new.restype = c_void_p
-        self.handle = realm_ffi.realm_schema_new(ii, 0, xx)
+
+        realm_ffi.realm_schema_new.argtypes = [
+            POINTER(Class_Info),
+            c_size_t,
+            POINTER(POINTER(Property_Info)),
+        ]
+
+        class_properties = [
+            [
+                Property_Info(
+                    "foo".encode("utf-8"),
+                    "_foo".encode("utf-8"),
+                    0,
+                    0,
+                    "".encode("utf-8"),
+                    "".encode("utf-8"),
+                    0,
+                    0,
+                ),
+                Property_Info(
+                    "soo".encode("utf-8"),
+                    "_soo".encode("utf-8"),
+                    0,
+                    0,
+                    "".encode("utf-8"),
+                    "".encode("utf-8"),
+                    0,
+                    0,
+                ),
+                Property_Info(
+                    "doo".encode("utf-8"),
+                    "_doo".encode("utf-8"),
+                    0,
+                    0,
+                    "".encode("utf-8"),
+                    "".encode("utf-8"),
+                    0,
+                    0,
+                ),
+            ]
+        ]
+
+        self.handle = c_void_p(
+            realm_ffi.realm_schema_new(
+                sample_classes_ptr, 1, *self.wrap(class_properties)
+            )
+        )
+        check_error()
         print(self.handle)
+        print("ok")
 
 
-#define configuration
+# define configuration
 # /**
 #  * Allocate a new configuration with default options.
 #  */
 # RLM_API realm_config_t* realm_config_new(void);
-class Configuration():
+class Configuration:
     def __init__(self, schema):
         realm_ffi.realm_config_new.restype = c_void_p
         self.handle = realm_ffi.realm_config_new()
-        set_schema_object(c_void_p(self.handle), c_void_p(schema.handle))
+
         set_schema_version(c_void_p(self.handle))
-        encoded_file = "example.realm".encode('utf-8')
+        set_schema_object(c_void_p(self.handle), schema.handle)
+
+        encoded_file = "gary.realm".encode("utf-8")
         set_path_for_realm(c_void_p(self.handle), c_char_p(encoded_file))
+        print(self.handle)
 
 
-#set schema object for realm
+# set schema object for realm
 # /**
 #  * Set the schema object for this realm.
 #  *
@@ -168,7 +265,7 @@ def set_schema_version(handle):
     realm_ffi.realm_config_set_schema_version(handle, 1)
 
 
-#define path for realm file
+# define path for realm file
 # /**
 #  * Set the path of the realm being opened.
 #  *
@@ -180,12 +277,12 @@ def set_path_for_realm(handle, encoded_file):
     realm_ffi.realm_config_set_path(handle, encoded_file)
 
 
-#define our realm
-class Realm():
+# define our realm
+class Realm:
     def __init__(self, configuration):
         self.configuration = configuration
 
-        #open the realm
+        # open the realm
         # /**
         #  * Open a Realm file.
         #  *
@@ -200,7 +297,7 @@ class Realm():
         self.handle = realm_ffi.realm_open(c_void_p(self.configuration.handle))
         print(self.handle)
 
-    #release realm pointer owned by caller
+    # release realm pointer owned by caller
     # /**
     # * Free any Realm C Wrapper object.
     # *
@@ -219,7 +316,7 @@ class Realm():
         realm_ffi.realm_release.restype = c_void_p
         realm_ffi.realm_release(c_void_p(self.configuration.handle))
 
-    #begin write transaction
+    # begin write transaction
     # /**
     # * Begin a write transaction for the Realm file.
     # *
@@ -229,17 +326,17 @@ class Realm():
     def begin_write(self):
         Realm.begin_read(self.handle)
         assert realm_ffi.realm_begin_write(c_void_p(self.handle))
-        #/**
+        # /**
         #  * Roll back a write transaction.
         #  *
         #  * @return True if the rollback succeeded and no exceptions were thrown.
         #  */
-        #RLM_API bool realm_rollback(realm_t*);
+        # RLM_API bool realm_rollback(realm_t*);
         realm_ffi.realm_rollback.restype = c_bool
         assert realm_ffi.realm_rollback(c_void_p(self.handle))
         print("begin")
 
-    #begin a read transaction
+    # begin a read transaction
     # /**
     # * Begin a read transaction for the Realm file.
     # *
@@ -250,7 +347,7 @@ class Realm():
         realm_ffi.realm_begin_read.restype = c_bool
         realm_ffi.realm_begin_read(c_void_p(handle))
 
-    #check if realm is closed
+    # check if realm is closed
     # /**
     # * True if the Realm file is closed.
     # *
@@ -273,7 +370,7 @@ class Realm():
         else:
             print("The realm is frozen.")
 
-    #check if realm is writeable
+    # check if realm is writeable
     # /**
     # * Return true if the realm is in a write transaction.
     # *
@@ -319,19 +416,20 @@ class Realm():
         # create buffer to hold out_keys, use realm_get_num_classes to set size of buffer
         # should be the same as how a string buffer works
         # buffer = ctypes.create_string_buffer(b"",realm_get_num_classes() * 4)
-        #numpy
-        #To get numpy array from the pointer, see How to convert pointer to c array to python array:
+        # numpy
+        # To get numpy array from the pointer, see How to convert pointer to c array to python array:
 
         # >>> import numpy
         # >>> pa = cast(in_data.pDataBuffer, POINTER(ArrayType))
         # >>> a = numpy.frombuffer(pa.contents, dtype=c_int16)
         # >>> a
         # array([1, 2, 3, ..., 0, 0, 0], dtype=int16)
-        #we need a structure to hold our out keys and out n buffer
+        # we need a structure to hold our out keys and out n buffer
         out_keys = array_buffer_int32_bit(Get_class_keys, out_keys)
         out_n = array_buffer_int32_bit(Get_class_keys, out_n)
-        answer = realm_ffi.realm_get_class_keys(c_void_p(self.handle),
-                                                out_keys, 10, out_n)
+        answer = realm_ffi.realm_get_class_keys(
+            c_void_p(self.handle), out_keys, 10, out_n
+        )
         print(answer)
 
         #         /**
@@ -355,9 +453,38 @@ class Realm():
         out = array_buffer_string(Realm_Find_Class, out_info)
 
         realm_ffi.realm_find_class.restype = c_bool
-        answer = realm_ffi.realm_find_class(c_void_p(self.handle), name, found,
-                                            out)
+        answer = realm_ffi.realm_find_class(c_void_p(self.handle), name, found, out)
         print(answer)
+
+    #     /**
+    #  * Get the list of properties for the class with this @a key.
+    #  * In case of errors this function will return false (errors to be fetched via `realm_get_last_error()`).
+    #  * If data is not copied the function will return true and set  `out_n` with the capacity needed.
+    #  * Data is only copied if the input array has enough capacity, otherwise the needed  array capacity will be set.
+    #  *
+    #  * @param out_properties  A pointer to an array of `realm_property_info_t`, which
+    #  *                       will be populated with the information about the
+    #  *                       properties.  Array may be NULL, in this case no data will be copied and `out_n` set if not
+    #  * NULL.
+    #  * @param max The maximum number of entries to write to `out_properties`.
+    #  * @param out_n The actual number of properties written to `out_properties`.
+    #  * @return True if no exception occurred.
+    #  */
+    # RLM_API bool realm_get_class_properties(const realm_t*, realm_class_key_t key, realm_property_info_t* out_properties,
+    #                                         size_t max, size_t* out_n);
+    # def realm_get_class_properties(self):
+
+    # /**
+    #  * Create an object in a class without a primary key.
+    #  *
+    #  * @return A non-NULL pointer if the object was created successfully.
+    #  */
+    # RLM_API realm_object_t* realm_object_create(realm_t*, realm_class_key_t);
+    def realm_object_create(self):
+        key = Class_Info().key
+        realm_ffi.realm_object_create.restype = c_void_p
+        realm_ffi.realm_object_create(c_void_p(self.handle), key)
+        print("ok")
 
 
 config = Configuration(Schema())
@@ -375,4 +502,6 @@ check_error()
 realm.realm_get_class_keys()
 check_error()
 realm.realm_find_class()  # create buffer for out_class_info and out_found
+check_error()
+
 check_error()
